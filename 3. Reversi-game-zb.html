@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Reversi Game</title>
+	<style type="text/css">
+		[v-cloak] {
+			display: none;
+		}
+
+		p{
+			text-align: center;
+		}
+
+		#flex{
+			display: flex;
+			align-items: center;
+			justify-content: center;
+		}
+
+		table{
+			border-spacing: 0;
+			border: 1px solid #444;
+		}
+
+		td{
+			background: #27AE60;
+			border: 1px solid #444;
+			width: 60px;
+			height: 60px;
+		}
+
+		tr:nth-child(odd) td:nth-child(odd), tr:nth-child(even) td:nth-child(even){
+			background: #229954;
+		}
+
+		.piece-W::before, .piece-B::before{
+			content: "";
+			display: block;
+			width: 48px;
+			height: 48px;
+			margin: 6px;
+			border-radius: 50%;
+			box-shadow: 1px 1px 5px #000000;
+		}
+
+		.piece-W::before{
+			background-image: linear-gradient(#FFF, #CCC);
+		}
+
+		.piece-B::before{
+			background-image: linear-gradient(#555, #000);
+		}
+
+		/*Color for valid box, use !important to override*/
+		.valid-move {
+			background-color: #00eeff !important;
+		}
+	</style>
+</head>
+
+<body>
+	<div id="app" v-cloak>
+		<p>Current turn: {{ turn == 'W' ? 'White' : 'Black' }}'s player</p>
+		<div id="flex">
+
+			<!--Added check for valid move, if it is valid move, valid-move will be added, thus box will become blue-->
+			<table>
+				<tr v-for="(row, rowKey) in game" :key="rowKey">
+					<td v-for="(col, colKey) in row" :key="colKey" :class="[(col ? 'piece-'+col : ''), 
+					validMoves.includes(rowKey+'-'+colKey) ? 'valid-move' : '']" 
+					@click="click(rowKey, colKey)">
+					</td>
+				</tr>
+			</table>
+		</div>
+
+		<!--Put a paragraph below to show the marks-->
+		<p>White: {{ score.W }} - Black: {{ score.B }}</p>
+		
+		<!--Create undo button to undo-->
+		<button @click="undo()">Undo</button>
+	</div>
+
+	<!-- Quiz test instructions:
+	==========================
+	Completed:
+	1. Check slot available
+	2. Flipped over opponent's piece
+	3. Write victory condition
+	4. Write draw condition
+	5. Show where you can put the piece
+	6. Score display
+	7. Regret piece
+
+	Can't complete:
+	This below 2 can't be done, as it requires more heavy calculations or needs AI to enhance the experience
+	8. Play by tip
+	9. Player vs Computer
+	==========================
+	* Try your best to complete the above quiz
+	* You may skip the task when you can't complete it -->
+
+	<script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+	<script type="text/javascript">
+		var app = new Vue({
+			el: '#app',
+			data: {
+				turn: 'W',
+				game: [
+					['','','','','','','',''],
+					['','','','','','','',''],
+					['','','','','','','',''],
+					['','','','W','B','','',''],
+					['','','','B','W','','',''],
+					['','','','','','','',''],
+					['','','','','','','',''],
+					['','','','','','','','']
+				],
+
+				//Used to save previous state for undo
+				previousState: [],
+				direction: [
+					[-1,0],[0,1],[1,0],[0,-1],[-1,-1],[-1,1],[1,1],[1,-1]
+				],
+
+				//Initialize score
+				score: {
+					W: 2,
+					B: 2
+				},
+
+				//Used to store valid moves
+				validMoves: []
+			},
+			mounted() {
+				this.calculateValidMoves();
+			},
+			methods: {
+
+				click(row, col){
+
+					//Empty slot alert
+					if(this.game[row][col] != ''){
+						alert('Please select an empty slot.');
+						return;
+					}
+
+					//Invalid move alert
+					if(!this.validMoves.includes(row + '-' + col)){
+						alert('Invalid move!');
+						return;
+					}
+
+					//Push and save current state as previous state for next turn using deep copy
+					this.previousState.push(JSON.parse(JSON.stringify(this.game)));
+
+					this.game[row].splice(col, 1, this.turn);
+
+					this.flipPieces(row, col);
+
+					this.updateScore();
+
+					// Check for victory or draw
+					if(this.isVictory()){
+						alert('Player ' + (this.turn == 'W' ? 'White' : 'Black') + ' wins!');
+						return;
+					}
+
+					if(this.isDraw()){
+						alert('It\'s a draw!');
+						return;
+					}
+
+					this.turn = this.turn == 'W' ? 'B' : 'W';
+					this.calculateValidMoves();
+				},
+
+				//Check valid move; Condition: Center need to be own color, and not flipped
+				isValidMove(row, col){
+					for(let dir of this.direction){
+						let r = row + dir[0];
+						let c = col + dir[1];
+						let flipped = false;
+
+						//Check if it is in bounds of the board, and if it's inside the row and column of opposite color; Valid = Flip
+						while(this.isInBounds(r, c) && this.game[r][c] == (this.turn == 'W' ? 'B' : 'W')){
+							r += dir[0];
+							c += dir[1];
+							flipped = true;
+						}
+
+						if(flipped && this.isInBounds(r, c) && this.game[r][c] == this.turn){
+							return true;
+						}
+					}
+					return false;
+				},
+
+				//Check bounds; Condition: 8 rows & 8 columns
+				isInBounds(row, col){
+					return row >= 0 && row < 8 && col >= 0 && col < 8;
+				},
+
+				//Check for flip pieces
+				flipPieces(row, col){
+					for(let dir of this.direction){
+						let r = row + dir[0];
+						let c = col + dir[1];
+						let piecesToFlip = [];
+
+						//Get the pieces inside to flip
+						while(this.isInBounds(r, c) && this.game[r][c] == (this.turn == 'W' ? 'B' : 'W')){
+							piecesToFlip.push([r, c]);
+							r += dir[0];
+							c += dir[1];
+						}
+
+						if(this.isInBounds(r, c) && this.game[r][c] == this.turn){
+							for(let [fr, fc] of piecesToFlip){
+								this.game[fr].splice(fc, 1, this.turn);
+							}
+						}
+					}
+				},
+
+				//Update the scores
+				updateScore(){
+					let w = 0;
+					let b = 0;
+
+					for(let row of this.game){
+						for(let col of row){
+							if(col == 'W') w++;
+							if(col == 'B') b++;
+						}
+					}
+
+					this.score.W = w;
+					this.score.B = b;
+				},
+
+				//Check final game state
+				isVictory(){
+					return this.score.W == 0 || this.score.B == 0 || this.checkBoardFull();
+				},
+
+				isDraw(){
+					return this.checkBoardFull() && this.score.W == this.score.B;
+				},
+
+				//Check if board still have ''
+				checkBoardFull(){
+					for(let row of this.game){
+						if(row.includes('')){
+							return false;
+						}
+					}
+					return true;
+				},
+
+				//Undo the moves
+				//Logic: If got previous state (>0), then move everything back to previous state upon undo button clicked and recalculate the scores and rounds
+				undo(){
+					if(this.previousState.length > 0){
+						this.game = this.previousState.pop();
+						this.updateScore();
+						this.turn = this.turn == 'W' ? 'B' : 'W';
+						this.calculateValidMoves();
+					}
+				},
+
+				//Calculate the valid moves for user to put
+				//Condition:
+				//1) Must be in 8x8 board
+				//2) Must be empty, ''
+				calculateValidMoves(){
+					this.validMoves = [];
+					for(let row = 0; row < 8; row++){
+						for(let col = 0; col < 8; col++){
+							if(this.game[row][col] == '' && this.isValidMove(row, col)){
+								this.validMoves.push(row + '-' + col);
+							}
+						}
+					}
+				}
+			}
+		});
+	</script>
+</body>
+</html>
